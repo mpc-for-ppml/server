@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from app.services.file_service import save_user_csv
 
-router = APIRouter()
+router = APIRouter(prefix="/upload", tags=["upload"])
 
 @router.post("/")
 async def upload_csv(
