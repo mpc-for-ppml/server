@@ -1,5 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from app.services.file_service import save_user_csv
+from .ws import active_connections
+import json
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -17,6 +19,16 @@ async def upload_csv(
 
     try:
         save_user_csv(group_id, user_id, file)
+
+        # Notify all clients in the group
+        if group_id in active_connections:
+            message = json.dumps({
+                "event": "file_uploaded",
+                "user_id": user_id
+            })
+            for connection in active_connections[group_id]:
+                await connection.send_text(message)
+
     except FileExistsError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
