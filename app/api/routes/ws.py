@@ -1,12 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Dict, List
-from .sessions import _sessions
 import json
+from .state import _sessions, active_connections
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
-
-# Structure: { group_id: [WebSocket, WebSocket, ...] }
-active_connections: Dict[str, List[WebSocket]] = {}
 
 @router.websocket("/{session_id}")
 async def ws_endpoint(ws: WebSocket, session_id: str):
@@ -29,6 +25,9 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
                     await ws.send_text(json.dumps({"error":"session full"}))
                     continue
                 sess["joined"].add(uid)
+
+                # Assign a party_id (starting from 1)
+                sess["party_map"][uid] = len(sess["joined"])
 
             # update their ready‐status
             sess["status_map"][uid] = bool(status)
