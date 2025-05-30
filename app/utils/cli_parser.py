@@ -2,6 +2,9 @@
 
 import sys
 
+def print_log(ids, msg):
+    print(f"[Party {ids}] {msg}", flush=True)
+
 def print_usage_and_exit():
     print(f"Usage: python mpyc_task.py [MPyC options] <dataset.csv>", end=" ")
     print("[--regression-type|--r] [linear|logistic]", end=" ")
@@ -37,6 +40,7 @@ def parse_cli_args():
     regression_type = "linear"
     learning_rate = None
     epochs = None
+    is_logging = '--verbose' in sys.argv or '--debug' in sys.argv
 
     # Extract CSV file
     for arg in sys.argv[1:]:
@@ -81,5 +85,6 @@ def parse_cli_args():
         "normalizer_type": normalizer_type,
         "regression_type": regression_type,
         "learning_rate": learning_rate,
-        "epochs": epochs
+        "epochs": epochs,
+        "is_logging": is_logging
     }

@@ -1,12 +1,17 @@
 # modules/mpc/logistic.py
 
 from mpyc.runtime import mpc
+from utils.cli_parser import print_log
 from utils.constant import DEFAULT_EPOCHS, DEFAULT_LR
 
+def log(msg):
+    print_log(mpc.pid, msg)
+
 class SecureLogisticRegression:
-    def __init__(self, epochs=DEFAULT_EPOCHS, lr=DEFAULT_LR):
+    def __init__(self, epochs=DEFAULT_EPOCHS, lr=DEFAULT_LR, is_logging=False):
         self.epochs = epochs
         self.lr = lr
+        self.is_logging = is_logging
         self.theta = None  # Model parameters
         self.secfx = mpc.SecFxp()
         
@@ -45,14 +50,17 @@ class SecureLogisticRegression:
         n_samples = len(y)
         n_features = len(X[0])
 
-        print(f"[Party {mpc.pid}] ✅ Loaded {n_samples} samples, {n_features} features")
+        log(f"✅ Loaded {n_samples} samples, {n_features} features")
 
         # Initialize theta (model weights) and bias to zeros
         theta = [self.secfx(0) for _ in range(n_features)]
         bias = self.secfx(0)
         lr_sec = self.secfx(self.lr)
 
-        print(f"\n[Party {mpc.pid}] 🔎 Start logistic regression with {self.epochs} iterations and learning rate {self.lr}")
+        log(f"🔎 Start logistic regression with {self.epochs} iterations and learning rate {self.lr}")
+        if not self.is_logging:
+            log("🧮 Please wait, the training process is currently on progress...")
+             
         for epoch in range(self.epochs):
             # Compute predictions: sigmoid(X @ theta)
             y_pred = [self.__approx_sigmoid__(sum(x_i[j] * theta[j] for j in range(n_features)) + bias) for x_i in X]
@@ -74,26 +82,30 @@ class SecureLogisticRegression:
             bias = bias - lr_sec * grad_bias
 
             # Debug: Print theta every 10 iterations
-            if epoch % 10 == 0 or epoch == self.epochs - 1:
-                theta_debug = await mpc.output(theta + [bias])
-                epsilon = self.secfx(1e-3)
-                y_pred_clamped = [mpc.max(epsilon, mpc.min(1 - epsilon, yp)) for yp in y_pred]
-                loss_terms = [
-                    y[i] * self.__approx_log__(y_pred_clamped[i]) + (1 - y[i]) * self.__approx_log__(1 - y_pred_clamped[i])
-                    for i in range(n_samples)
-                ]
-                loss = -sum(loss_terms) / n_samples
-                loss_val = await mpc.output(loss)
-                print(f"[Party {mpc.pid}] 🧮 Epoch {epoch + 1}: theta = {[float(t) for t in theta_debug]} | loss = {loss_val}")
+            if self.is_logging:
+                if epoch % 10 == 0 or epoch == self.epochs - 1:
+                    theta_debug = await mpc.output(theta + [bias])
+                    epsilon = self.secfx(1e-3)
+                    y_pred_clamped = [mpc.max(epsilon, mpc.min(1 - epsilon, yp)) for yp in y_pred]
+                    loss_terms = [
+                        y[i] * self.__approx_log__(y_pred_clamped[i]) + (1 - y[i]) * self.__approx_log__(1 - y_pred_clamped[i])
+                        for i in range(n_samples)
+                    ]
+                    loss = -sum(loss_terms) / n_samples
+                    loss_val = await mpc.output(loss)
+                    log(f"🧮 Epoch {epoch + 1}: theta = {[float(t) for t in theta_debug]} | loss = {loss_val}")
 
         # Reveal final model weights
-        print(f"\n[Party {mpc.pid}] ⌛ Reaching final training epoch...")
+        log("⌛ Reaching final training epoch...")
         try:
             theta_open = await mpc.output(theta + [bias])
             self.theta = [float(t) for t in theta_open]
-            print(f"[Party {mpc.pid}] ✅ Training complete. Model weights: {self.theta}")
+            if self.is_logging:
+                log(f"✅ Training complete. Model weights: {self.theta}")
+            else:
+                log("✅ Training complete.")
         except Exception as e:
-            print(f"[Party {mpc.pid}] ❗ ERROR during mpc.output: {e}")
+            log(f"❗ ERROR during mpc.output: {e}")
             self.theta = []
             self.bias = 0.0
 

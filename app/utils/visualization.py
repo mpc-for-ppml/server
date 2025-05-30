@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, r2_score, classification_report, roc_curve, roc_auc_score
 import math
 import os
-
+    
 def plot_actual_vs_predicted(y_true, y_pred, mpc, save_path="linear_regression_plot.png"):
     """
     Plot actual vs predicted target values and show RMSE & R² Score.
@@ -18,7 +18,7 @@ def plot_actual_vs_predicted(y_true, y_pred, mpc, save_path="linear_regression_p
     async def evaluate():
         # ROC-AUC Curve (only on Party 0)
         if mpc.pid == 0:
-            print(f"\n[Party {mpc.pid}] 📊 Saving the evaluation report...")
+            print(f"[Party {mpc.pid}] 📊 Saving the evaluation report...", flush=True)
 
             # Calculate metrics
             mse = mean_squared_error(y_true, y_pred)
@@ -46,10 +46,12 @@ def plot_actual_vs_predicted(y_true, y_pred, mpc, save_path="linear_regression_p
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
             plt.close()
+            
+        print(f"[Party {mpc.pid}] ✅ Evaluation complete.", flush=True)
 
     return evaluate()
 
-def plot_logistic_evaluation_report(y_true, y_pred, mpc, save_path="logistic_regression_roc.png"):
+def plot_logistic_evaluation_report(y_true, y_pred, mpc, is_logging, save_path="logistic_regression_roc.png"):
     """
     Evaluate and visualize logistic regression results and save the ROC curve as an image.
 
@@ -62,8 +64,9 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc, save_path="logistic_reg
     async def evaluate():
         # Classification report
         report = classification_report(y_true, y_pred, zero_division=0)
-        print(f"\n[Party {mpc.pid}] 📊 Saving the evaluation report...")
-        print(report)
+        print(f"[Party {mpc.pid}] 📊 Saving the evaluation report...", flush=True)
+        if is_logging:
+            print(report)
 
         # ROC-AUC Curve (only on Party 0)
         if mpc.pid == 0:
@@ -83,5 +86,7 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc, save_path="logistic_reg
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
             plt.close()
+            
+        print(f"[Party {mpc.pid}] ✅ Evaluation complete.", flush=True)
 
     return evaluate()

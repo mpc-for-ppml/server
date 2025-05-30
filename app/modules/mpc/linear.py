@@ -1,12 +1,17 @@
 # modules/mpc/linear.py
 
 from mpyc.runtime import mpc
+from utils.cli_parser import print_log
 from utils.constant import DEFAULT_EPOCHS, DEFAULT_LR
 
+def log(msg):
+    print_log(mpc.pid, msg)
+    
 class SecureLinearRegression:
-    def __init__(self, epochs=DEFAULT_EPOCHS, lr=DEFAULT_LR):
+    def __init__(self, epochs=DEFAULT_EPOCHS, lr=DEFAULT_LR, is_logging=False):
         self.epochs = epochs
         self.lr = lr
+        self.is_logging = is_logging
         self.theta = None  # Model parameters
         self.secfx = mpc.SecFxp()
 
@@ -24,13 +29,16 @@ class SecureLinearRegression:
         n_samples = len(y)
         n_features = len(X[0])
 
-        print(f"[Party {mpc.pid}] ✅ Loaded {n_samples} samples, {n_features} features")
+        log(f"✅ Loaded {n_samples} samples, {n_features} features")
         
         # Initialize theta (model weights) to zeros
         theta = [self.secfx(0) for _ in range(n_features)]
         lr_sec = self.secfx(self.lr)
 
-        print(f"\n[Party {mpc.pid}] 🔎 Start learning with {self.epochs} iterations and learning rate {self.lr}")
+        log(f"🔎 Start learning with {self.epochs} iterations and learning rate {self.lr}")
+        if not self.is_logging:
+            log("🧮 Please wait, the training process is currently on progress...")
+            
         for epoch in range(self.epochs):
             # Compute predictions: y_pred = X @ theta
             y_pred = [sum(x_i[j] * theta[j] for j in range(n_features)) for x_i in X]
@@ -48,18 +56,22 @@ class SecureLinearRegression:
             theta = [theta[j] - lr_sec * gradients[j] for j in range(n_features)]
             
             # Logging: Print theta every 10 iterations
-            if epoch % 10 == 0 or epoch == self.epochs - 1:
-                theta_debug = await mpc.output(theta)
-                print(f"[Party {mpc.pid}] 🧮 Epoch {epoch + 1}: theta = {[float(t) for t in theta_debug]}")
+            if self.is_logging:
+                if epoch % 10 == 0 or epoch == self.epochs - 1:
+                    theta_debug = await mpc.output(theta)
+                    log(f"🧮 Epoch {epoch + 1}: theta = {[float(t) for t in theta_debug]}")
 
         # Reveal model weights to all parties
-        print(f"\n[Party {mpc.pid}] ⌛ Reaching final training epoch...")
+        log(f"⌛ Reaching final training epoch...")
         try:
             theta_open = await mpc.output(theta)
             self.theta = [float(t) for t in theta_open]
-            print(f"[Party {mpc.pid}] ✅ Training complete. Model weights: {self.theta}")
+            if self.is_logging:
+                log(f"✅ Training complete. Model weights: {self.theta}")
+            else:
+                log("✅ Training complete.")
         except Exception as e:
-            print(f"[Party {mpc.pid}] ❗ ERROR during mpc.output: {e}")
+            log(f"❗ ERROR during mpc.output: {e}")
             self.theta = []
 
     async def predict(self, X_input):
@@ -81,5 +93,5 @@ class SecureLinearRegression:
             preds_open = await mpc.output(predictions)
             return [float(p) for p in preds_open]
         except Exception as e:
-            print(f"[Party {mpc.pid}] ❗ ERROR during prediction output: {e}")
+            log(f"❗ ERROR during prediction output: {e}")
             return []
