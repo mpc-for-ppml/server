@@ -2,41 +2,41 @@
 
 import sys
 
-def print_usage_and_exit(script_type):
-    is_main = script_type == "main"
-    print(f"Usage: python {script_type}.py [MPyC options] <dataset.csv>", end=" ")
-    if is_main:
-        print("[--regression-type|--r] [linear|logistic]", end=" ")
+def print_usage_and_exit():
+    print(f"Usage: python mpyc_task.py [MPyC options] <dataset.csv>", end=" ")
+    print("[--regression-type|--r] [linear|logistic]", end=" ")
+    print("[--lr] <learning_rate> [--epochs] <num_epochs>", end=" ")
     print("[--normalizer|--n] [minmax|zscore] [--help|-h]")
 
     print("\nArguments:")
     print("  [MPyC options]     : Optional, like -M (number of parties) or -I (party id)")
     print("  <dataset.csv>      : Path to the local party's CSV file")
     print("  --normalizer -n    : Choose normalization method: 'minmax' or 'zscore', default to none")
-    if is_main:
-        print("  --regression -r    : Choose regression method: 'linear' or 'logistic', default to 'linear'")
+    print("  --regression -r    : Choose regression method: 'linear' or 'logistic', default to 'linear'")
+    print("  --lr               : Learning rate for training (float), optional")
+    print("  --epochs           : Number of epochs for training (int), optional")
     print("  --help -h          : Show this help message and exit")
 
     print("\nExample:")
     for i in range(3):
-        example = f"  python {script_type}.py -M3 -I{i} party{i}_data.csv -n zscore"
-        if is_main:
-            example += " -r logistic"
+        example = f"  python mpyc_task.py -M3 -I{i} party{i}_data.csv -n zscore -r logistic --lr 0.1 --epochs 100"
         print(example)
     
     print()
     sys.exit(1)
 
-def parse_cli_args(type):
+def parse_cli_args():
     if '--help' in sys.argv or '-h' in sys.argv:
-        print_usage_and_exit(type)
+        print_usage_and_exit()
 
     if len(sys.argv) < 2:
-        print_usage_and_exit(type)
+        print_usage_and_exit()
 
     csv_file = None
     normalizer_type = None
     regression_type = "linear"
+    learning_rate = None
+    epochs = None
 
     # Extract CSV file
     for arg in sys.argv[1:]:
@@ -47,28 +47,39 @@ def parse_cli_args(type):
         print("❌ CSV file not provided.\n")
         print_usage_and_exit()
 
-    # Parse normalizer
-    if '--normalizer' in sys.argv:
-        idx = sys.argv.index('--normalizer')
-        if idx + 1 < len(sys.argv):
-            normalizer_type = sys.argv[idx + 1]
-    elif '-n' in sys.argv:
-        idx = sys.argv.index('-n')
-        if idx + 1 < len(sys.argv):
-            normalizer_type = sys.argv[idx + 1]
+    def get_arg_value(flags):
+        for flag in flags:
+            if flag in sys.argv:
+                idx = sys.argv.index(flag)
+                if idx + 1 < len(sys.argv):
+                    return sys.argv[idx + 1]
+        return None
 
-    # Parse regression type
-    if '--regression-type' in sys.argv:
-        idx = sys.argv.index('--regression-type')
-        if idx + 1 < len(sys.argv):
-            regression_type = sys.argv[idx + 1]
-    elif '-r' in sys.argv:
-        idx = sys.argv.index('-r')
-        if idx + 1 < len(sys.argv):
-            regression_type = sys.argv[idx + 1]
+    # Parse optional arguments
+    normalizer_type = get_arg_value(['--normalizer', '-n'])
+    regression_type = get_arg_value(['--regression-type', '-r']) or "linear"
+    lr_str = get_arg_value(['--lr'])
+    epochs_str = get_arg_value(['--epochs'])
+
+    # Convert and validate lr and epochs
+    if lr_str:
+        try:
+            learning_rate = float(lr_str)
+        except ValueError:
+            print("❌ Invalid learning rate. Must be a float.\n")
+            print_usage_and_exit()
+
+    if epochs_str:
+        try:
+            epochs = int(epochs_str)
+        except ValueError:
+            print("❌ Invalid number of epochs. Must be an integer.\n")
+            print_usage_and_exit()
 
     return {
         "csv_file": csv_file,
         "normalizer_type": normalizer_type,
-        "regression_type": regression_type
+        "regression_type": regression_type,
+        "learning_rate": learning_rate,
+        "epochs": epochs
     }

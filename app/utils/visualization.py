@@ -3,8 +3,9 @@
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, r2_score, classification_report, roc_curve, roc_auc_score
 import math
+import os
 
-def plot_actual_vs_predicted(y_true, y_pred, mpc):
+def plot_actual_vs_predicted(y_true, y_pred, mpc, save_path="linear_regression_plot.png"):
     """
     Plot actual vs predicted target values and show RMSE & R² Score.
 
@@ -12,12 +13,13 @@ def plot_actual_vs_predicted(y_true, y_pred, mpc):
         y_pred: Labels predicted by the model.
         y_true: True binary labels.
         mpc: MPyC runtime object (used for awaiting outputs).
+        save_path: File path to save the plot.
     """
     async def evaluate():
         # ROC-AUC Curve (only on Party 0)
         if mpc.pid == 0:
-            print(f"\n[Party {mpc.pid}] 📊 Visualizing results (Only on Party 0)...")
-            
+            print(f"\n[Party {mpc.pid}] 📊 Saving the evaluation report...")
+
             # Calculate metrics
             mse = mean_squared_error(y_true, y_pred)
             rmse = math.sqrt(mse)
@@ -40,23 +42,27 @@ def plot_actual_vs_predicted(y_true, y_pred, mpc):
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
-            plt.show()
-        
+
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path)
+            plt.close()
+
     return evaluate()
 
-def plot_logistic_evaluation_report(y_true, y_pred, mpc):
+def plot_logistic_evaluation_report(y_true, y_pred, mpc, save_path="logistic_regression_roc.png"):
     """
-    Evaluate and visualize logistic regression results.
+    Evaluate and visualize logistic regression results and save the ROC curve as an image.
 
     Args:
         y_pred: Labels predicted by the model.
         y_true: True binary labels.
         mpc: MPyC runtime object (used for awaiting outputs).
+        save_path: File path to save the ROC plot.
     """
     async def evaluate():
         # Classification report
         report = classification_report(y_true, y_pred, zero_division=0)
-        print(f"\n[Party {mpc.pid}] 📊 Showing the evaluation report...")
+        print(f"\n[Party {mpc.pid}] 📊 Saving the evaluation report...")
         print(report)
 
         # ROC-AUC Curve (only on Party 0)
@@ -73,6 +79,9 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc):
             plt.legend(loc="lower right")
             plt.grid(True)
             plt.tight_layout()
-            plt.show()
+
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path)
+            plt.close()
 
     return evaluate()

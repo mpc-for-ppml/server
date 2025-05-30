@@ -1,6 +1,7 @@
-# main.py
+# mpyc_task.py
 
 import sys
+import io
 import time
 from mpyc.runtime import mpc
 from modules.mpc.linear import SecureLinearRegression
@@ -8,16 +9,20 @@ from modules.mpc.logistic import SecureLogisticRegression
 from modules.psi.multiparty_psi import run_n_party_psi
 from modules.psi.party import Party
 from utils.cli_parser import parse_cli_args
-from utils.constant import DEFAULT_EPOCHS, DEFAULT_LR
 from utils.data_loader import load_party_data_adapted
 from utils.data_normalizer import normalize_features
 from utils.visualization import plot_actual_vs_predicted, plot_logistic_evaluation_report
 
+# Ensure UTF-8 encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 async def mpc_task():    
-    args = parse_cli_args(type="main")
+    args = parse_cli_args()
     csv_file = args["csv_file"]
     normalizer_type = args["normalizer_type"]
     regression_type = args["regression_type"]
+    epochs = args["epochs"]
+    lr = args["learning_rate"]
 
     party_id = mpc.pid
     user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(csv_file)
@@ -143,31 +148,6 @@ async def mpc_task():
     # Step 3.1: Add bias coeff to X
     X_all = [row + [1.0] for row in X_all]
     
-    # Step 3.2: Get the learning variables (epochs and lr)
-    if mpc.pid == 0:
-        try:
-            epochs_input = input(f"\n[Party 0] ❓ Enter number of epochs (default={DEFAULT_EPOCHS}): \n >>  ").strip()
-            lr_input = input(f"[Party 0] ❓ Enter learning rate (default={DEFAULT_LR}): \n >>  ").strip()
-
-            epochs = int(epochs_input) if epochs_input else DEFAULT_EPOCHS
-            lr = float(lr_input) if lr_input else DEFAULT_LR
-
-            print(f"[Party 0] ✅ Using {epochs} epochs and {lr} learning rate.")
-        except ValueError:
-            print("[Party 0] ❌ Invalid input. Please enter numeric values.")
-            sys.exit(1)
-    else:
-        epochs = None
-        lr = None
-        
-    # Send from Party 0 to all parties
-    epochs_all = await mpc.transfer(epochs, senders=[0])
-    lr_all = await mpc.transfer(lr, senders=[0])
-
-    # All parties now use the same values
-    epochs = epochs_all[0]
-    lr = lr_all[0]
-    
     # Step 3.2: Run the regression
     print(f"\n[Party {party_id}] ⚙️ Running {regression_type} regression on the data...")    
     if regression_type == 'logistic':
@@ -179,11 +159,11 @@ async def mpc_task():
 
     # Step 4: Evaluation
     # predict the train data
-    predictions = await model.predict([X_all][0])
+    predictions = await model.predict([X_all][0])        
     if regression_type == 'logistic':
-        await plot_logistic_evaluation_report(y_all, predictions, mpc)
+        await plot_logistic_evaluation_report(y_all, predictions, mpc, save_path="static/logistic_roc.png")
     else:
-        await plot_actual_vs_predicted(y_all, predictions, mpc)
+        await plot_actual_vs_predicted(y_all, predictions, mpc, save_path="static/linear_plot.png")
 
     await mpc.shutdown()
 
