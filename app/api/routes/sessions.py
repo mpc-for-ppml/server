@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
+from utils.data_loader import ensure_log_file_exists
+from utils.constant import LOG_DIR
+from .state import _sessions
 import uuid
-import json
-from fastapi import BackgroundTasks
-import shlex, asyncio
-from subprocess import run, PIPE
-from .state import _sessions, active_connections
+import os
+import sys
+import subprocess
+import time
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -20,8 +22,7 @@ def create_session(body: SessionCreate):
         "lead": body.lead_user_id,
         "participant_count": body.participant_count,
         "joined": set(),         # track user_ids who have connected
-        "status_map": {},        # user_id → bool
-        "party_map": {},         # user_id → party_id (1-based)
+        "status_map": {}        # user_id → bool
     }
     return {"session_id": sid}
 
@@ -35,44 +36,91 @@ def get_session(session_id: str):
         "joined_count": len(s["joined"]),
     }
 
-@router.get("/{session_id}/party/{user_id}")
-def get_party_id(session_id: str, user_id: str):
-    session = _sessions.get(session_id)
-    if not session or user_id not in session["party_map"]:
-        raise HTTPException(404, "User not found in session")
-    return {"party_id": session["party_map"][user_id]}
-
-@router.post("/{session_id}/proceed")
-async def proceed(session_id: str, background_tasks: BackgroundTasks):
+@router.post("/{session_id}/run")
+async def proceed(session_id: str, background_tasks: BackgroundTasks, request: Request):
     sess = _sessions.get(session_id)
     if not sess:
         raise HTTPException(404, "Session not found")
 
-    print("Current status map:", sess["status_map"])
-    print("Expected participants:", sess["participant_count"])
-    if len(sess["status_map"]) != sess["participant_count"] or not all(sess["status_map"].values()):
-        raise HTTPException(400, "Not all users are ready")
+    # Parsing the data
+    data = await request.json()
+    user_id = data.get("userId", "")
+    normalizer = data.get("normalizer", "zscore")
+    regression = data.get("regression", "linear")
+    lr = str(data.get("learningRate", 0.5))
+    epochs = str(data.get("epochs", 1000))
+    is_logging = data.get("isLogging", False)
 
-    async def run_mpc_for_user(user_id: str):
-        party_id = sess["party_map"][user_id]
-        data_path = f"data/{session_id}/{user_id}.csv"
-        command = f"python secure_logreg.py -M{sess['participant_count']} -I{party_id} {data_path} -n zscore"
-        result = run(shlex.split(command), stdout=PIPE, stderr=PIPE, text=True)
+    # Only allow lead to trigger
+    if user_id != sess["lead"]:
+        raise HTTPException(403, "Only lead can initiate the run")
 
-        # Kirim hasil ke semua klien di sesi
-        message = json.dumps({
-            "event": "mpc_result",
-            "user_id": user_id,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        })
+    ensure_log_file_exists()
+    
+    def run_and_log():
+        session_dir = os.path.join("uploads", session_id)
+        if not os.path.exists(session_dir):
+            raise RuntimeError(f"Session upload folder {session_dir} does not exist")
 
-        for conn in active_connections.get(session_id, []):
-            await conn.send_text(message)
+        # Collect all user CSVs in session folder
+        user_files = sorted([
+            f for f in os.listdir(session_dir) 
+            if f.endswith(".csv")
+        ])
 
-    async def run_all():
-        await asyncio.gather(*(run_mpc_for_user(uid) for uid in sess["joined"]))
+        # Assign party ids: lead always gets -I0, others get -I1, -I2, ...
+        user_file_map = {}
+        party_id = 0
+        for fname in user_files:
+            uid = fname.replace(".csv", "")
+            if uid == user_id:
+                user_file_map[uid] = 0  # lead is always party 0
+            else:
+                party_id += 1
+                user_file_map[uid] = party_id
 
-    # Jalankan di background
-    background_tasks.add_task(run_all)
-    return {"message": "MPC started"}
+        num_parties = len(user_file_map)
+        processes = []
+
+        os.makedirs(LOG_DIR, exist_ok=True)  # Ensure logs/ exists
+
+        for uid, pid in user_file_map.items():
+            csv_path = os.path.join(session_dir, f"{uid}.csv")
+            party_log_path = os.path.join(LOG_DIR, f"log_{pid}.log")
+
+            # Clear log
+            with open(party_log_path, "w", encoding="utf-8") as f:
+                f.write("")
+
+            logfile = open(party_log_path, "a", encoding="utf-8")
+
+            cmd = [
+                sys.executable, "-u", "mpyc_task.py",
+                "-M", str(num_parties),
+                "-I", str(pid),
+                csv_path,
+                "-n", normalizer,
+                "-r", regression,
+                "--lr", lr,
+                "--epochs", epochs
+            ]
+
+            if is_logging:
+                cmd.append("--verbose")
+
+            p = subprocess.Popen(
+                cmd,
+                stdout=logfile,
+                stderr=logfile,
+                bufsize=1,
+                universal_newlines=True,
+            )
+            processes.append((p, logfile))
+            time.sleep(0.1)  # slight delay to reduce contention
+
+        for p, logfile in processes:
+            p.wait()
+            logfile.close()
+
+    background_tasks.add_task(run_and_log)
+    return {"status": "started", "initiated_by": user_id}

@@ -26,6 +26,7 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
             uid = msg.get("userId")
             status = msg.get("status", None)
             proceed = msg.get("proceed", False)
+            training = msg.get("training", False)
 
             # First time we see this user: enforce capacity
             if uid not in sess["joined"]:
@@ -48,6 +49,8 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
                 broadcast_payload["statusMap"] = sess["status_map"]
             if proceed:
                 broadcast_payload["proceed"] = True
+            if training:
+                broadcast_payload["training"] = True
 
             # Broadcast to all connected clients
             if broadcast_payload:
@@ -57,3 +60,58 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
     except WebSocketDisconnect:
         active_connections[session_id].remove(ws)
         # optionally cleanup sess["joined"] & status_map on disconnect
+
+
+@router.websocket("/{session_id}/progress")
+async def websocket_endpoint(ws: WebSocket, session_id: str):
+    await ws.accept()
+    print("🔌 WebSocket connected")
+    
+    sess = _sessions.get(session_id)
+    if not sess:
+        await ws.close(code=1008)  # policy violation
+        return
+
+    try:
+        # Clear the log file so frontend always gets a fresh stream
+        ensure_log_file_exists()
+        with open(LOG_FILE, "w", encoding="utf-8"):
+            pass  # truncate file to zero length
+
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            f.seek(0, os.SEEK_END)  # Start tailing from the end
+            
+            has_output = False  # Track if we have sent any output
+            milestone_final = "✅ MPyc task complete"
+            sent_final = False
+            
+            party_log_pattern = re.compile(r"^\[Party \d+] ")
+
+            while True:            
+                line = f.readline()
+                if line:
+                    cleaned_line = line.strip()
+                    
+                    # Filter: only send lines that start with [Party X]
+                    if not party_log_pattern.match(cleaned_line):
+                        continue
+                    
+                    await ws.send_text(cleaned_line)
+                    has_output = True
+
+                    if cleaned_line == milestone_final:
+                        sent_final = True
+                else:
+                    await asyncio.sleep(0.5)
+
+                # End WebSocket when dummy_task.py ends
+                if process_ref and process_ref.poll() is not None and has_output and sent_final:
+                    await ws.send_text("🛑 MPyC shutdown")
+                    await ws.close()
+                    break
+
+    except WebSocketDisconnect:
+        print("❌ WebSocket disconnected — log cleared")
+    except Exception as e:
+        await ws.send_text(f"⚠️ Error: {str(e)}")
+        await ws.close()
