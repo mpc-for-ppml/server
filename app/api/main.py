@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import upload, ws, sessions
+from api.routes import upload, ws, sessions
 
 api_router = APIRouter()
 api_router.include_router(sessions.router)
