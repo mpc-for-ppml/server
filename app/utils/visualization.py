@@ -17,9 +17,8 @@ def plot_actual_vs_predicted(y_true, y_pred, mpc, save_path="linear_regression_p
     """
     async def evaluate():
         # ROC-AUC Curve (only on Party 0)
+        print(f"[Party {mpc.pid}] 📊 Saving the evaluation report...", flush=True)
         if mpc.pid == 0:
-            print(f"[Party {mpc.pid}] 📊 Saving the evaluation report...", flush=True)
-
             # Calculate metrics
             mse = mean_squared_error(y_true, y_pred)
             rmse = math.sqrt(mse)
