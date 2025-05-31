@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .state import _sessions, active_connections
 from utils.data_loader import ensure_log_file_exists
-from utils.constant import LOG_FILE
+from utils.constant import LOG_DIR
 import json
 import asyncio
 import os
@@ -74,11 +74,12 @@ async def websocket_endpoint(ws: WebSocket, session_id: str):
 
     try:
         # Clear the log file so frontend always gets a fresh stream
-        ensure_log_file_exists()
-        with open(LOG_FILE, "w", encoding="utf-8"):
+        ensure_log_file_exists(session_id)
+        log_file_path = os.path.join(LOG_DIR, session_id, "log_0.log")
+        with open(log_file_path, "w", encoding="utf-8"):
             pass  # truncate file to zero length
 
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
+        with open(log_file_path, "r", encoding="utf-8") as f:
             f.seek(0, os.SEEK_END)  # Start tailing from the end
             
             has_output = False  # Track if we have sent any output

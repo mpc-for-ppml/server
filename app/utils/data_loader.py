@@ -2,13 +2,10 @@
 
 import csv
 import os
-from utils.constant import LOG_DIR, LOG_FILE
-
-def ensure_log_file_exists():
-    os.makedirs(LOG_DIR, exist_ok=True)
-    if not os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "w", encoding="utf-8") as f:
-            f.write("")  # create empty log file
+            
+def ensure_log_file_exists(session_id: str):
+    session_log_dir = os.path.join("logs", session_id)
+    os.makedirs(session_log_dir, exist_ok=True)
 
 def load_party_data(filename):
     """Loads a party's data from a CSV file into X and y."""
