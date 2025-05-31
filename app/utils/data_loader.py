@@ -1,10 +1,11 @@
 # utils/data_loader.py
 
+from utils.constant import LOG_DIR
 import csv
 import os
             
 def ensure_log_file_exists(session_id: str):
-    session_log_dir = os.path.join("logs", session_id)
+    session_log_dir = os.path.join(LOG_DIR, session_id)
     os.makedirs(session_log_dir, exist_ok=True)
 
 def load_party_data(filename):

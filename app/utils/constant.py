@@ -8,3 +8,5 @@ DEFAULT_LR = 0.01
 
 # Constant for dirs
 LOG_DIR = "logs"
+RESULT_DIR = "results"
+UPLOAD_DIR = "uploads"

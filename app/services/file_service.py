@@ -1,7 +1,7 @@
 import os
 import shutil
 from fastapi import UploadFile
-from constants.constant import UPLOAD_DIR
+from utils.constant import UPLOAD_DIR
 
 def save_user_csv(group_id: str, user_id: str, file: UploadFile):
     group_path = os.path.join(UPLOAD_DIR, group_id)
