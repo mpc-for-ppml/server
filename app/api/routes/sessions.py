@@ -1,8 +1,10 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from utils.data_loader import ensure_log_file_exists
-from utils.constant import LOG_DIR
+from utils.constant import LOG_DIR, UPLOAD_DIR
 from .state import _sessions
+from services.result_service import ResultService
 import uuid
 import os
 import sys
@@ -22,7 +24,8 @@ def create_session(body: SessionCreate):
         "lead": body.lead_user_id,
         "participant_count": body.participant_count,
         "joined": set(),         # track user_ids who have connected
-        "status_map": {}        # user_id → bool
+        "status_map": {},        # user_id → bool
+        "has_results": False     # track if computation completed
     }
     return {"session_id": sid}
 
@@ -58,11 +61,11 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, request: R
     ensure_log_file_exists(session_id)
     
     def run_and_log():
-        session_dir = os.path.join("uploads", session_id)
+        session_dir = os.path.join(UPLOAD_DIR, session_id)
         if not os.path.exists(session_dir):
             raise RuntimeError(f"Session upload folder {session_dir} does not exist")
         
-        session_log_dir = os.path.join("logs", session_id)
+        session_log_dir = os.path.join(LOG_DIR, session_id)
         os.makedirs(session_log_dir, exist_ok=True)
 
         # Collect all user CSVs in session folder
@@ -124,6 +127,60 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, request: R
         for p, logfile in processes:
             p.wait()
             logfile.close()
+        
+        # Mark session as having results after all processes complete
+        sess["has_results"] = True
 
     background_tasks.add_task(run_and_log)
     return {"status": "started", "initiated_by": user_id}
+
+@router.get("/{session_id}/result")
+def get_session_result(session_id: str):
+    # Check if session exists
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get result using ResultService
+    result = ResultService.get_result(session_id)
+    
+    if result is None:
+        raise HTTPException(status_code=404, detail="Results not available yet")
+    
+    # Convert to dict to add download link
+    result_dict = result.model_dump()
+    
+    # Add model download link if model path exists
+    if result.summary.modelPath:
+        result_dict["modelDownloadUrl"] = f"/api/sessions/{session_id}/model/download"
+    
+    return result_dict
+
+@router.get("/{session_id}/model/download")
+def download_model(session_id: str):
+    """Download the trained model pickle file for a session"""
+    # Check if session exists
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if results exist
+    result = ResultService.get_result(session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Results not available yet")
+    
+    # Check if model path exists in results
+    if not result.summary.modelPath:
+        raise HTTPException(status_code=404, detail="Model file not available")
+    
+    # Construct the full path to the model file
+    model_path = os.path.join("models", result.summary.modelPath)
+    
+    # Check if the file exists
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail="Model file not found")
+    
+    # Return the file
+    return FileResponse(
+        path=model_path,
+        filename=result.summary.modelPath,
+        media_type="application/octet-stream"
+    )

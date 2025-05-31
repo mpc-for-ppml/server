@@ -221,3 +221,5 @@ Thumbs.db
 # Saved stats
 static/
 uploads/
+models/
+results/
