@@ -215,16 +215,14 @@ async def mpc_task():
     else:
         model = SecureLinearRegression(epochs=epochs, lr=lr, is_logging=is_logging)
     
+    await model.fit([X_all], [y_all])
+    
     training_time = time.time() - start_time
     if party_id == 0:
         milestones.append({"phase": "Federated Training", "time": training_time, "fill": "#002B5B"})
-    
-    # [6] Model Evaluation
-    start_time = time.time()
-    await model.fit([X_all], [y_all])
 
-    # Step 4: Evaluation
-    # predict the train data
+    # Step 4: Evaluation - predict the train data
+    # [6] Model Evaluation
     start_time = time.time()
     predictions = await model.predict([X_all][0])
     
