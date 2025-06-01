@@ -31,8 +31,14 @@ class ActualVsPredicted(BaseModel):
     actual: List[float]
     predicted: List[float]
 
+class AucRocData(BaseModel):
+    fpr: List[float]  # False Positive Rate
+    tpr: List[float]  # True Positive Rate
+    auc: float    # Area Under Curve
+
 class SessionResult(BaseModel):
     summary: Summary
     config: Config
     coefficients: List[Coefficient]
     actualVsPredicted: ActualVsPredicted
+    aucRocData: Optional[AucRocData] = None  # Optional, only for logistic regression

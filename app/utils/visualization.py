@@ -59,6 +59,9 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc, is_logging, save_path="
         y_true: True binary labels.
         mpc: MPyC runtime object (used for awaiting outputs).
         save_path: File path to save the ROC plot.
+        
+    Returns:
+        dict: AUC-ROC data including fpr, tpr, and auc score (only for party 0, None for others)
     """
     async def evaluate():
         # Classification report
@@ -67,6 +70,7 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc, is_logging, save_path="
         if is_logging:
             print(report)
 
+        auc_roc_data = None
         # ROC-AUC Curve (only on Party 0)
         if mpc.pid == 0:
             fpr, tpr, _ = roc_curve(y_true, y_pred)
@@ -86,6 +90,14 @@ def plot_logistic_evaluation_report(y_true, y_pred, mpc, is_logging, save_path="
             plt.savefig(save_path)
             plt.close()
             
+            # Prepare AUC-ROC data to return
+            auc_roc_data = {
+                "fpr": fpr.tolist(),  # Convert numpy array to list
+                "tpr": tpr.tolist(),  # Convert numpy array to list
+                "auc": float(roc_auc)  # Ensure it's a regular float
+            }
+            
         print(f"[Party {mpc.pid}] ✅ Evaluation complete.", flush=True)
+        return auc_roc_data
 
     return evaluate()

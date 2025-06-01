@@ -234,8 +234,9 @@ async def mpc_task():
         linear_plot_path = "static/linear_plot.png"
         logistic_plot_path = "static/logistic_roc.png"
     
+    auc_roc_data = None
     if regression_type == 'logistic':
-        await plot_logistic_evaluation_report(y_all, predictions, mpc, is_logging, save_path=logistic_plot_path)
+        auc_roc_data = await plot_logistic_evaluation_report(y_all, predictions, mpc, is_logging, save_path=logistic_plot_path)
     else:
         await plot_actual_vs_predicted(y_all, predictions, mpc, save_path=linear_plot_path)
         
@@ -336,6 +337,10 @@ async def mpc_task():
                     "predicted": [round(float(p), 2) for p in predictions[:50]]
                 }
             }
+            
+            # Add AUC-ROC data for logistic regression
+            if regression_type == 'logistic' and auc_roc_data:
+                result_data["aucRocData"] = auc_roc_data
             
             # Save results
             results_dir = os.path.join(RESULT_DIR)
