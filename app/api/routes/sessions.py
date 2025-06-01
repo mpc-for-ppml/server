@@ -19,6 +19,15 @@ class SessionCreate(BaseModel):
     participant_count: int
     lead_user_id: str
 
+class RunConfig(BaseModel):
+    userId: str
+    normalizer: str = "zscore"
+    regression: str = "linear"
+    learningRate: float = 0.5
+    epochs: int = 1000
+    label: str
+    isLogging: bool = False
+
 @router.post("/", status_code=201)
 def create_session(body: SessionCreate):
     sid = str(uuid.uuid4())
@@ -75,19 +84,19 @@ def check_state(session_id: str, body: StateCheckRequest):
     )
 
 @router.post("/{session_id}/run")
-async def proceed(session_id: str, background_tasks: BackgroundTasks, request: Request):
+async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunConfig):
     sess = _sessions.get(session_id)
     if not sess:
         raise HTTPException(404, "Session not found")
 
-    # Parsing the data
-    data = await request.json()
-    user_id = data.get("userId", "")
-    normalizer = data.get("normalizer", "zscore")
-    regression = data.get("regression", "linear")
-    lr = str(data.get("learningRate", 0.5))
-    epochs = str(data.get("epochs", 1000))
-    is_logging = data.get("isLogging", False)
+    # Extract data from the request body
+    user_id = body.userId
+    normalizer = body.normalizer
+    regression = body.regression
+    lr = str(body.learningRate)
+    epochs = str(body.epochs)
+    label = body.label
+    is_logging = body.isLogging
 
     # Only allow lead to trigger
     if user_id != sess.lead_user_id:
@@ -159,7 +168,8 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, request: R
                 "-n", normalizer,
                 "-r", regression,
                 "--lr", lr,
-                "--epochs", epochs
+                "--epochs", epochs,
+                "--label", label
             ]
 
             if is_logging:

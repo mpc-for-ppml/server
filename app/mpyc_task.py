@@ -39,6 +39,7 @@ async def mpc_task():
     regression_type = args["regression_type"]
     epochs = args["epochs"]
     lr = args["learning_rate"]
+    preferred_label = args["label_name"]
     is_logging = args["is_logging"]
 
     party_id = mpc.pid
@@ -50,8 +51,17 @@ async def mpc_task():
     # [1] Data Normalization
     start_time = time.time()
     
-    # Track data loading time
-    user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(csv_file)
+    # Track data loading time with preferred label
+    user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(csv_file, preferred_label)
+    
+    # Log label selection for debugging
+    if party_id == 0:
+        if preferred_label and label_name == preferred_label:
+            log(f"💡 Using preferred label: '{label_name}'")
+        elif preferred_label and label_name != preferred_label:
+            log(f"⚠️ Preferred label '{preferred_label}' not found, using fallback: '{label_name}'")
+        else:
+            log(f"📋 Using detected label: '{label_name}'")
     
     if normalizer_type:
         try:

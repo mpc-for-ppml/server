@@ -20,7 +20,7 @@ def load_party_data(filename):
             y_local.append(label)
     return X_local, y_local
 
-def load_party_data_adapted(filename):
+def load_party_data_adapted(filename, preferred_label=None):
     """
     Dynamically loads CSV data for a party and returns:
     - user_ids: list of user_id values
@@ -28,6 +28,10 @@ def load_party_data_adapted(filename):
     - y_local: list of labels (if available, else None)
     - feature_names: names of features (excluding user_id and label)
     - label_name: the name of the label column (if available, else None)
+    
+    Args:
+        filename: Path to the CSV file
+        preferred_label: Preferred label column name, with fallback to default candidates
     """
     user_ids = []
     X_local = []
@@ -40,13 +44,20 @@ def load_party_data_adapted(filename):
         header = next(reader)
 
         user_id_idx = header.index("user_id")
-        label_col_candidates = ["will_purchase", "purchase_amount"]
+        
+        # First try the preferred label if provided
         label_idx = None
-        for col in label_col_candidates:
-            if col in header:
-                label_idx = header.index(col)
-                label_name = col
-                break
+        if preferred_label and preferred_label in header:
+            label_idx = header.index(preferred_label)
+            label_name = preferred_label
+        else:
+            # Fallback to default candidates
+            label_col_candidates = ["will_purchase", "purchase_amount"]
+            for col in label_col_candidates:
+                if col in header:
+                    label_idx = header.index(col)
+                    label_name = col
+                    break
             
         if label_idx is not None:
             label_name = header[label_idx]
