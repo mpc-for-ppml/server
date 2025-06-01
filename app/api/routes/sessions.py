@@ -1,17 +1,22 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from utils.data_loader import ensure_log_file_exists
 from utils.constant import LOG_DIR, UPLOAD_DIR
 from .state import _sessions
 from services.result_service import ResultService
+from services.prediction_service import PredictionService
 from interface.session_state import SessionState, SessionStateInfo, StateCheckRequest, StateCheckResponse
 from datetime import datetime
+from typing import List, Dict
 import uuid
 import os
 import sys
 import subprocess
 import time
+import pickle
+import pandas as pd
+import io
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -27,6 +32,12 @@ class RunConfig(BaseModel):
     epochs: int = 1000
     label: str
     isLogging: bool = False
+
+class PredictRequest(BaseModel):
+    data: List[Dict[str, float]]
+
+class PredictResponse(BaseModel):
+    predictions: List[float]
 
 @router.post("/", status_code=201)
 def create_session(body: SessionCreate):
@@ -262,3 +273,116 @@ def download_model(session_id: str):
         filename=result.summary.modelPath,
         media_type="application/octet-stream"
     )
+
+@router.post("/{session_id}/predict", response_model=PredictResponse)
+def predict(session_id: str, body: PredictRequest):
+    """Make predictions using the trained model for single or multiple data points"""
+    # Check if session exists
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if results exist
+    result = ResultService.get_result(session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Model not available yet")
+    
+    # Check if model path exists
+    if not result.summary.modelPath:
+        raise HTTPException(status_code=404, detail="Model file not available")
+    
+    # Construct model path
+    model_path = os.path.join("models", result.summary.modelPath)
+    
+    try:
+        # Validate that all required features are present in each data point
+        with open(model_path, "rb") as f:
+            model_data = pickle.load(f)
+        
+        feature_names = model_data["feature_names"]
+        for data_point in body.data:
+            for feature in feature_names:
+                if feature not in data_point:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Missing required feature: {feature}"
+                    )
+        
+        # Use PredictionService to make predictions
+        predictions = PredictionService.load_model_and_predict(model_path, body.data)
+        
+        # Round predictions for consistency
+        predictions = [round(p, 4) for p in predictions]
+        
+        return PredictResponse(predictions=predictions)
+        
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Model file not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@router.post("/{session_id}/predict-batch", response_model=PredictResponse)
+async def predict_batch(session_id: str, file: UploadFile = File(...)):
+    """Make batch predictions using the trained model from a CSV file"""
+    # Check if session exists
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if results exist
+    result = ResultService.get_result(session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Model not available yet")
+    
+    # Check if model path exists
+    if not result.summary.modelPath:
+        raise HTTPException(status_code=404, detail="Model file not available")
+    
+    # Construct model path
+    model_path = os.path.join("models", result.summary.modelPath)
+    
+    # Validate file type
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File must be a CSV")
+    
+    try:
+        # Read CSV file
+        contents = await file.read()
+        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        
+        # Load model to get feature names for validation
+        with open(model_path, "rb") as f:
+            model_data = pickle.load(f)
+        
+        feature_names = model_data["feature_names"]
+        
+        # Validate that all required features are present
+        for feature in feature_names:
+            if feature not in df.columns:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required feature in CSV: {feature}"
+                )
+        
+        # Convert DataFrame to list of dictionaries for PredictionService
+        data_points = []
+        for _, row in df.iterrows():
+            data_point = {feature: float(row[feature]) for feature in feature_names}
+            data_points.append(data_point)
+        
+        # Use PredictionService to make predictions
+        predictions = PredictionService.load_model_and_predict(model_path, data_points)
+        
+        # Round predictions for consistency
+        predictions = [round(p, 4) for p in predictions]
+        
+        return PredictResponse(predictions=predictions)
+        
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Model file not found")
+    except pd.errors.EmptyDataError:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
