@@ -302,10 +302,7 @@ def predict(session_id: str, body: PredictRequest):
         for data_point in body.data:
             for feature in feature_names:
                 if feature not in data_point:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Missing required feature: {feature}"
-                    )
+                    raise ValueError(f"Missing required feature: {feature}")
         
         # Use PredictionService to make predictions
         predictions = PredictionService.load_model_and_predict(model_path, body.data)
@@ -359,10 +356,7 @@ async def predict_batch(session_id: str, file: UploadFile = File(...)):
         # Validate that all required features are present
         for feature in feature_names:
             if feature not in df.columns:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Missing required feature in CSV: {feature}"
-                )
+                raise ValueError(f"Missing required feature in CSV: {feature}")
         
         # Convert DataFrame to list of dictionaries for PredictionService
         data_points = []

@@ -48,6 +48,7 @@ class PredictionService:
     def load_model_and_predict(model_path: str, data_points: List[Dict[str, float]]) -> List[float]:
         """
         Load a trained model and make predictions on multiple data points
+        Handles different theta structures for linear vs logistic regression
         """
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -66,14 +67,24 @@ class PredictionService:
             # Extract features in the correct order
             features = [data_point[feature] for feature in feature_names]
             
-            # Add bias term (always 1.0)
-            features.append(1.0)
-            
-            # Make prediction based on model type
             if regression_type == "linear":
+                # Linear regression: add bias term and use full theta
+                features.append(1.0)
+                if len(features) != len(theta):
+                    raise ValueError(f"Linear regression dimension mismatch: got {len(features)} features + bias, expected {len(theta)} theta values")
                 prediction = PredictionService.predict_linear(theta, features)
+                
             else:  # logistic
-                prediction = PredictionService.predict_logistic(theta, features)
+                # Logistic regression: theta includes both feature weights and bias
+                expected_theta_length = len(features) + 1  # features + bias
+                
+                if len(theta) >= expected_theta_length:
+                    # Use only the needed theta values
+                    features.append(1.0)
+                    used_theta = theta[:expected_theta_length]
+                    prediction = PredictionService.predict_logistic(used_theta, features)
+                else:
+                    raise ValueError(f"Logistic regression dimension mismatch: got {len(features)} features, theta has {len(theta)} values, expected at least {expected_theta_length}")
             
             predictions.append(prediction)
         
