@@ -2,6 +2,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .state import _sessions, active_connections
 from utils.data_loader import ensure_log_file_exists
 from utils.constant import LOG_DIR
+from interface.session_state import SessionState
+from datetime import datetime
 import json
 import asyncio
 import os
@@ -29,15 +31,22 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
             training = msg.get("training", False)
 
             # First time we see this user: enforce capacity
-            if uid not in sess["joined"]:
-                if len(sess["joined"]) >= sess["participant_count"]:
+            if uid not in sess.joined_users:
+                if len(sess.joined_users) >= sess.participant_count:
                     await ws.send_text(json.dumps({"error":"session full"}))
                     continue
-                sess["joined"].add(uid)
+                sess.joined_users.add(uid)
+                sess.updated_at = datetime.now()
+                
+                # Update state to UPLOADING when first user joins
+                if sess.state == SessionState.CREATED:
+                    sess.state = SessionState.UPLOADING
+                    sess.updated_at = datetime.now()
             
             # Update user status if provided
             if status is not None:
-                sess["status_map"][uid] = bool(status)
+                sess.status_map[uid] = bool(status)
+                sess.updated_at = datetime.now()
                 
             # Add socket to active room
             if ws not in active_connections.setdefault(session_id, []):
@@ -46,7 +55,7 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
             # Prepare broadcast payload
             broadcast_payload = {}
             if status is not None:
-                broadcast_payload["statusMap"] = sess["status_map"]
+                broadcast_payload["statusMap"] = sess.status_map
             if proceed:
                 broadcast_payload["proceed"] = True
             if training:

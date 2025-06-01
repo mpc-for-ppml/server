@@ -5,6 +5,8 @@ from utils.data_loader import ensure_log_file_exists
 from utils.constant import LOG_DIR, UPLOAD_DIR
 from .state import _sessions
 from services.result_service import ResultService
+from interface.session_state import SessionState, SessionStateInfo, StateCheckRequest, StateCheckResponse
+from datetime import datetime
 import uuid
 import os
 import sys
@@ -20,13 +22,19 @@ class SessionCreate(BaseModel):
 @router.post("/", status_code=201)
 def create_session(body: SessionCreate):
     sid = str(uuid.uuid4())
-    _sessions[sid] = {
-        "lead": body.lead_user_id,
-        "participant_count": body.participant_count,
-        "joined": set(),         # track user_ids who have connected
-        "status_map": {},        # user_id → bool
-        "has_results": False     # track if computation completed
-    }
+    now = datetime.now()
+    _sessions[sid] = SessionStateInfo(
+        state=SessionState.CREATED,
+        session_id=sid,
+        lead_user_id=body.lead_user_id,
+        participant_count=body.participant_count,
+        joined_users={body.lead_user_id},  # Automatically add lead user
+        uploaded_users=set(),
+        status_map={},
+        has_results=False,
+        created_at=now,
+        updated_at=now
+    )
     return {"session_id": sid}
 
 @router.get("/{session_id}")
@@ -35,9 +43,36 @@ def get_session(session_id: str):
     if not s:
         raise HTTPException(status_code=404, detail="Session not found")
     return {
-        "participant_count": s["participant_count"],
-        "joined_count": len(s["joined"]),
+        "participant_count": s.participant_count,
+        "joined_count": len(s.joined_users),
     }
+
+@router.post("/{session_id}/check-state")
+def check_state(session_id: str, body: StateCheckRequest):
+    """
+    Check if a user can access a specific path based on session state.
+    Used by frontend to validate navigation.
+    """
+    s = _sessions.get(session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if user can access the requested path
+    allowed, reason = s.can_access_path(body.path, body.user_id)
+    
+    return StateCheckResponse(
+        allowed=allowed,
+        reason=reason,
+        current_state=s.state,
+        session_info={
+            "session_id": s.session_id,
+            "participant_count": s.participant_count,
+            "joined_count": len(s.joined_users),
+            "uploaded_count": len(s.uploaded_users),
+            "is_lead": body.user_id == s.lead_user_id,
+            "has_results": s.has_results
+        }
+    )
 
 @router.post("/{session_id}/run")
 async def proceed(session_id: str, background_tasks: BackgroundTasks, request: Request):
@@ -55,8 +90,24 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, request: R
     is_logging = data.get("isLogging", False)
 
     # Only allow lead to trigger
-    if user_id != sess["lead"]:
+    if user_id != sess.lead_user_id:
         raise HTTPException(403, "Only lead can initiate the run")
+    
+    # Check session state
+    if sess.state != SessionState.READY:
+        if sess.state == SessionState.UPLOADING:
+            raise HTTPException(400, "Not all users have uploaded their files yet")
+        elif sess.state == SessionState.PROCESSING:
+            raise HTTPException(400, "Session is already processing")
+        elif sess.state == SessionState.COMPLETED:
+            raise HTTPException(400, "Session has already completed")
+        else:
+            raise HTTPException(400, f"Cannot start processing in current state: {sess.state}")
+    
+    # Update state to PROCESSING
+    sess.state = SessionState.PROCESSING
+    sess.processing_started_at = datetime.now()
+    sess.updated_at = datetime.now()
 
     ensure_log_file_exists(session_id)
     
@@ -128,8 +179,25 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, request: R
             p.wait()
             logfile.close()
         
-        # Mark session as having results after all processes complete
-        sess["has_results"] = True
+        # Wait for all processes and check their return codes
+        all_success = True
+        error_messages = []
+        for idx, (p, logfile) in enumerate(processes):
+            return_code = p.wait()
+            if return_code != 0:
+                all_success = False
+                error_messages.append(f"Process {idx} failed with return code {return_code}")
+        
+        # Update state based on results
+        if all_success:
+            sess.state = SessionState.COMPLETED
+            sess.has_results = True
+            sess.processing_completed_at = datetime.now()
+        else:
+            sess.state = SessionState.FAILED
+            sess.error_message = "; ".join(error_messages)
+        
+        sess.updated_at = datetime.now()
 
     background_tasks.add_task(run_and_log)
     return {"status": "started", "initiated_by": user_id}
