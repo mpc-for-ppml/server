@@ -48,11 +48,15 @@ async def mpc_task():
     # Initialize milestone tracking
     milestones = []
     
-    # [1] Data Normalization
+    # [1] Data Loading and Preprocessing
     start_time = time.time()
     
-    # Track data loading time with preferred label
-    user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(csv_file, preferred_label)
+    # Track data loading time with preferred label and preprocessing
+    user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(
+        csv_file, 
+        preferred_label,
+        verbose=is_logging
+    )
     
     # Log label selection for debugging
     if party_id == 0:
@@ -66,16 +70,16 @@ async def mpc_task():
     if normalizer_type:
         try:
             X_local = normalize_features(X_local, method=normalizer_type)
-            log(f"✅ Applied '{normalizer_type}' normalization.")
+            log(f"✅ Applied '{normalizer_type}' normalization, Preprocessing done.")
         except ValueError as e:
             log(f"❌ Normalization error: {e}")
             sys.exit(1)
     else:
         log("⚠️ No normalization applied.")
-    normalization_time = time.time() - start_time
+    preprocessing_and_normalization_time = time.time() - start_time
     
     if party_id == 0:
-        milestones.append({"phase": "Data Normalization", "time": normalization_time, "fill": "#1B4F91"})
+        milestones.append({"phase": "Data Preprocessing and Normalization", "time": preprocessing_and_normalization_time, "fill": "#1B4F91"})
 
     # Start MPC runtime
     await mpc.start()
