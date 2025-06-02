@@ -224,3 +224,4 @@ uploads/
 models/
 results/
 logs/
+.vercel
