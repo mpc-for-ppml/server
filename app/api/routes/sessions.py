@@ -1,9 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from utils.data_loader import ensure_log_file_exists
-from utils.constant import LOG_DIR, UPLOAD_DIR
+from utils.constant import LOG_DIR, UPLOAD_DIR, MODEL_DIR
 from .state import _sessions
+from services.file_service import ensure_log_file_exists
 from services.result_service import ResultService
 from services.prediction_service import PredictionService
 from interface.session_state import SessionState, SessionStateInfo, StateCheckRequest, StateCheckResponse
@@ -136,8 +136,7 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
         if not os.path.exists(session_dir):
             raise RuntimeError(f"Session upload folder {session_dir} does not exist")
         
-        session_log_dir = os.path.join(LOG_DIR, session_id)
-        os.makedirs(session_log_dir, exist_ok=True)
+        ensure_log_file_exists(session_id)
 
         # Collect all user CSVs in session folder
         user_files = sorted([
@@ -159,11 +158,9 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
         num_parties = len(user_file_map)
         processes = []
 
-        os.makedirs(LOG_DIR, exist_ok=True)  # Ensure logs/ exists
-
         for uid, pid in user_file_map.items():
             csv_path = os.path.join(session_dir, f"{uid}.csv")
-            party_log_path = os.path.join(session_log_dir, f"log_{pid}.log")
+            party_log_path = os.path.join(LOG_DIR, session_id, f"log_{pid}.log")
 
             # Clear log
             with open(party_log_path, "w", encoding="utf-8") as f:
@@ -261,7 +258,7 @@ def download_model(session_id: str):
         raise HTTPException(status_code=404, detail="Model file not available")
     
     # Construct the full path to the model file
-    model_path = os.path.join("models", result.summary.modelPath)
+    model_path = os.path.join(MODEL_DIR, result.summary.modelPath)
     
     # Check if the file exists
     if not os.path.exists(model_path):
@@ -291,7 +288,7 @@ def predict(session_id: str, body: PredictRequest):
         raise HTTPException(status_code=404, detail="Model file not available")
     
     # Construct model path
-    model_path = os.path.join("models", result.summary.modelPath)
+    model_path = os.path.join(MODEL_DIR, result.summary.modelPath)
     
     try:
         # Validate that all required features are present in each data point
@@ -336,7 +333,7 @@ async def predict_batch(session_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=404, detail="Model file not available")
     
     # Construct model path
-    model_path = os.path.join("models", result.summary.modelPath)
+    model_path = os.path.join(MODEL_DIR, result.summary.modelPath)
     
     # Validate file type
     if not file.filename.endswith('.csv'):

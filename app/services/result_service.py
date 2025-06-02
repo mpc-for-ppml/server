@@ -7,9 +7,7 @@ from utils.constant import RESULT_DIR
 class ResultService:
     @staticmethod
     def save_result(session_id: str, result_data: dict) -> None:
-        """Save computation results for a session"""
-        os.makedirs(RESULT_DIR, exist_ok=True)
-        
+        """Save computation results for a session"""        
         result_file = os.path.join(RESULT_DIR, f"{session_id}.json")
         with open(result_file, "w") as f:
             json.dump(result_data, f, indent=2)

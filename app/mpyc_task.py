@@ -14,7 +14,7 @@ from utils.cli_parser import parse_cli_args, print_log
 from utils.data_loader import load_party_data_adapted
 from utils.data_normalizer import normalize_features
 from utils.visualization import plot_actual_vs_predicted, plot_logistic_evaluation_report
-from utils.constant import RESULT_DIR, UPLOAD_DIR
+from utils.constant import RESULT_DIR, UPLOAD_DIR, MODEL_DIR, STATIC_DIR
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, f1_score
 import math
 import pickle
@@ -238,11 +238,11 @@ async def mpc_task():
     
     # Save session-specific plots
     if session_id:
-        linear_plot_path = f"static/{session_id}_linear_plot.png"
-        logistic_plot_path = f"static/{session_id}_logistic_roc.png"
+        linear_plot_path = f"{STATIC_DIR}/{session_id}_linear_plot.png"
+        logistic_plot_path = f"{STATIC_DIR}/{session_id}_logistic_roc.png"
     else:
-        linear_plot_path = "static/linear_plot.png"
-        logistic_plot_path = "static/logistic_roc.png"
+        linear_plot_path = f"{STATIC_DIR}/linear_plot.png"
+        logistic_plot_path = f"{STATIC_DIR}/logistic_roc.png"
     
     auc_roc_data = None
     if regression_type == 'logistic':
@@ -294,10 +294,8 @@ async def mpc_task():
             })
             
             # Save the trained model as a pickle file
-            models_dir = os.path.join("models")
-            os.makedirs(models_dir, exist_ok=True)
             model_filename = f"{session_id}_model.pkl"
-            model_path = os.path.join(models_dir, model_filename)
+            model_path = os.path.join(MODEL_DIR, model_filename)
             
             # Create a model dictionary with all necessary information
             model_data = {
@@ -353,9 +351,7 @@ async def mpc_task():
                 result_data["aucRocData"] = auc_roc_data
             
             # Save results
-            results_dir = os.path.join(RESULT_DIR)
-            os.makedirs(results_dir, exist_ok=True)
-            result_file = os.path.join(results_dir, f"{session_id}.json")
+            result_file = os.path.join(RESULT_DIR, f"{session_id}.json")
             with open(result_file, "w") as f:
                 json.dump(result_data, f, indent=2)
             log(f"✅ Results saved to {result_file}")

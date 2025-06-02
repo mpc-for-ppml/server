@@ -4,10 +4,14 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.main import api_router
 from core.config import settings
+from utils.constant import ensure_all_directories_exist
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{route.tags[0]}-{route.name}"
+
+# Ensure all required directories exist on startup
+ensure_all_directories_exist()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

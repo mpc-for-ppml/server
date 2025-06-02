@@ -1,8 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
 from .state import _sessions, active_connections
-from utils.data_loader import ensure_log_file_exists
 from utils.constant import LOG_DIR
 from interface.session_state import SessionState
+from services.file_service import ensure_log_file_exists
 from datetime import datetime
 import json
 import asyncio

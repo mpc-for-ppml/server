@@ -1,7 +1,7 @@
 import os
 import shutil
 from fastapi import UploadFile
-from utils.constant import UPLOAD_DIR
+from utils.constant import LOG_DIR, UPLOAD_DIR
 
 def save_user_csv(group_id: str, user_id: str, file: UploadFile):
     group_path = os.path.join(UPLOAD_DIR, group_id)
@@ -14,3 +14,7 @@ def save_user_csv(group_id: str, user_id: str, file: UploadFile):
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+def ensure_log_file_exists(session_id: str):
+    session_log_dir = os.path.join(LOG_DIR, session_id)
+    os.makedirs(session_log_dir, exist_ok=True)
