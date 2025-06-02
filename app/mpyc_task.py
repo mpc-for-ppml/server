@@ -79,7 +79,7 @@ async def mpc_task():
     preprocessing_and_normalization_time = time.time() - start_time
     
     if party_id == 0:
-        milestones.append({"phase": "Data Preprocessing and Normalization", "time": preprocessing_and_normalization_time, "fill": "#1B4F91"})
+        milestones.append({"phase": "Data Preprocessing", "time": preprocessing_and_normalization_time, "fill": "#1B4F91"})
 
     # Start MPC runtime
     await mpc.start()

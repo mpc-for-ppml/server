@@ -160,7 +160,7 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
 
         for uid, pid in user_file_map.items():
             csv_path = os.path.join(session_dir, f"{uid}.csv")
-            party_log_path = os.path.join(LOG_DIR, session_id, f"log_{pid}.log")
+            party_log_path = os.path.join(LOG_DIR, session_id, f"log_{uid}.log")
 
             # Clear log
             with open(party_log_path, "w", encoding="utf-8") as f:

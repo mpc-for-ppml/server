@@ -72,22 +72,31 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
         # optionally cleanup sess["joined"] & status_map on disconnect
 
 
-@router.websocket("/{session_id}/progress")
-async def websocket_endpoint(ws: WebSocket, session_id: str):
+@router.websocket("/{session_id}/progress/{user_id}")
+async def websocket_endpoint(ws: WebSocket, session_id: str, user_id: str):
     await ws.accept()
-    print("🔌 WebSocket connected")
+    print(f"🔌 WebSocket connected for user {user_id}")
     
     sess = _sessions.get(session_id)
     if not sess:
         await ws.close(code=1008)  # policy violation
         return
+    
+    # Check if user is part of the session
+    if user_id not in sess.joined_users:
+        await ws.send_text("⚠️ Error: User not part of this session")
+        await ws.close(code=1008)
+        return
 
     try:
-        # Clear the log file so frontend always gets a fresh stream
+        # Use user-specific log file
         ensure_log_file_exists(session_id)
-        log_file_path = os.path.join(LOG_DIR, session_id, "log_0.log")
-        with open(log_file_path, "w", encoding="utf-8"):
-            pass  # truncate file to zero length
+        log_file_path = os.path.join(LOG_DIR, session_id, f"log_{user_id}.log")
+        
+        # Create log file if it doesn't exist
+        if not os.path.exists(log_file_path):
+            with open(log_file_path, "w", encoding="utf-8"):
+                pass
 
         with open(log_file_path, "r", encoding="utf-8") as f:
             f.seek(0, os.SEEK_END)  # Start tailing from the end
@@ -122,7 +131,7 @@ async def websocket_endpoint(ws: WebSocket, session_id: str):
                     break
 
     except WebSocketDisconnect:
-        print("❌ WebSocket disconnected — log cleared")
+        print(f"❌ WebSocket disconnected for user {user_id}")
     except Exception as e:
         await ws.send_text(f"⚠️ Error: {str(e)}")
         await ws.close()
