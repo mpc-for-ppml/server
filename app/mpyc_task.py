@@ -166,6 +166,15 @@ async def mpc_task():
     X_all = []
     y_all = []
 
+    # Check if party 0 actually has labels
+    if y_final[0] is None:
+        log("❌ Error: Party 0 must have the target label column!")
+        log(f"   Expected label column: '{label_name}'")
+        log(f"   Current party assignment: Party {party_id}")
+        log("   Solution: Ensure the party with the label column uploads first or is designated as lead.")
+        await mpc.shutdown()
+        return
+
     for i in range(len(intersection)):
         features = []
         for party_features in X_joined:

@@ -282,16 +282,46 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
             if f.endswith(".csv")
         ])
 
-        # Assign party ids: lead always gets -I0, others get -I1, -I2, ...
+        # Assign party ids: find which user has the label column and make them party 0
         user_file_map = {}
-        party_id = 0
+        label_owner = None
+        
+        # Find which user has the label column
         for fname in user_files:
             uid = fname.replace(".csv", "")
-            if uid == user_id:
-                user_file_map[uid] = 0  # lead is always party 0
-            else:
-                party_id += 1
-                user_file_map[uid] = party_id
+            csv_path = os.path.join(session_dir, fname)
+            df = pd.read_csv(csv_path, nrows=1)  # Just read header
+            if label in df.columns:
+                label_owner = uid
+                break
+        
+        # Assign party IDs with label owner as party 0
+        if label_owner:
+            user_file_map[label_owner] = 0  # Party with label becomes party 0
+            party_id = 1
+            for fname in user_files:
+                uid = fname.replace(".csv", "")
+                if uid != label_owner:
+                    user_file_map[uid] = party_id
+                    party_id += 1
+        else:
+            # Fallback: lead is party 0 (original behavior)
+            party_id = 0
+            for fname in user_files:
+                uid = fname.replace(".csv", "")
+                if uid == user_id:
+                    user_file_map[uid] = 0  # lead is always party 0
+                else:
+                    party_id += 1
+                    user_file_map[uid] = party_id
+
+        # Log party assignments for debugging
+        print(f"🎭 Party assignments for label '{label}':")
+        for uid, pid in user_file_map.items():
+            csv_path = os.path.join(session_dir, f"{uid}.csv")
+            df = pd.read_csv(csv_path, nrows=1)
+            has_label = label in df.columns
+            print(f"   Party {pid}: {uid} {'(HAS LABEL)' if has_label else ''}")
 
         num_parties = len(user_file_map)
         processes = []

@@ -92,9 +92,24 @@ def load_party_data_adapted(filename, preferred_label=None,
     # Temporarily remove identifier columns for preprocessing
     df_without_identifiers = df.drop(columns=identifier_config.columns)
     
+    # Filter out non-numeric columns (except label column)
+    numeric_columns = df_without_identifiers.select_dtypes(include=['number']).columns.tolist()
+    if label_name and label_name not in numeric_columns:
+        # Keep label column even if it's not numeric (for binary classification)
+        numeric_columns.append(label_name)
+    
+    # Keep only numeric columns and label for preprocessing
+    if verbose:
+        all_columns = df_without_identifiers.columns.tolist()
+        non_numeric_cols = [col for col in all_columns if col not in numeric_columns]
+        if non_numeric_cols:
+            print(f"🗑️ Dropping non-numeric columns: {non_numeric_cols}", flush=True)
+    
+    df_numeric_only = df_without_identifiers[numeric_columns]
+    
     # Apply preprocessing
     df_preprocessed = preprocessor.preprocess(
-        df_without_identifiers,
+        df_numeric_only,
         label_column=label_name,
         **default_config
     )
