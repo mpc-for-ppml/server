@@ -13,6 +13,7 @@ from modules.psi.party import Party
 from utils.cli_parser import parse_cli_args, print_log
 from utils.data_loader import load_party_data_adapted
 from utils.data_normalizer import normalize_features
+from interface.identifier_config import IdentifierConfig
 from utils.visualization import plot_actual_vs_predicted, plot_logistic_evaluation_report
 from utils.constant import RESULT_DIR, UPLOAD_DIR, MODEL_DIR, STATIC_DIR
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, f1_score
@@ -40,6 +41,7 @@ async def mpc_task():
     epochs = args["epochs"]
     lr = args["learning_rate"]
     preferred_label = args["label_name"]
+    identifier_config_dict = args["identifier_config"]
     is_logging = args["is_logging"]
 
     party_id = mpc.pid
@@ -50,11 +52,18 @@ async def mpc_task():
     
     # [1] Data Loading and Preprocessing
     start_time = time.time()
+    log("🚀 Start data preprocessing...")
+    
+    # Create identifier config from CLI args
+    identifier_config = None
+    if identifier_config_dict:
+        identifier_config = IdentifierConfig(**identifier_config_dict)
     
     # Track data loading time with preferred label and preprocessing
-    user_ids, X_local, y_local, feature_names, label_name = load_party_data_adapted(
+    identifiers, X_local, y_local, feature_names, label_name = load_party_data_adapted(
         csv_file, 
         preferred_label,
+        identifier_config=identifier_config,
         verbose=is_logging
     )
     
@@ -104,44 +113,44 @@ async def mpc_task():
     for f_list in feature_names_all:
         joined_feature_names.extend(f_list)
 
-    # Step 1: Private Set Intersection (PSI) - Find common user IDs across all parties
-    # Step 1.1: Collect user ID lists from all parties
-    log("🗂️ Collecting user ID from all parties...")
-    gathered_user_ids = await mpc.transfer(user_ids, senders=range(len(mpc.parties)))
+    # Step 1: Private Set Intersection (PSI) - Find common identifiers across all parties
+    # Step 1.1: Collect identifier lists from all parties
+    log("🗂️ Collecting identifiers from all parties...")
+    gathered_identifiers = await mpc.transfer(identifiers, senders=range(len(mpc.parties)))
 
-    # Step 1.2: Create Party instances for each list of user IDs
-    parties = [Party(party_id, ids) for party_id, ids in enumerate(gathered_user_ids)]
-    log("✅ Received user ID lists from all parties.")
+    # Step 1.2: Create Party instances for each list of identifiers
+    parties = [Party(party_id, ids) for party_id, ids in enumerate(gathered_identifiers)]
+    log("✅ Received identifier lists from all parties.")
     
     exchange_time = time.time() - start_time
     
     if party_id == 0:
         milestones.append({"phase": "Secure ID Exchange", "time": exchange_time, "fill": "#336699"})
 
-    # Step 1.3: Run PSI to find the shared user IDs
-    log("🔎 Computing intersection of user IDs...")
+    # Step 1.3: Run PSI to find the shared identifiers
+    log("🔎 Computing intersection of identifiers...")
     
     # [3] Data Intersection
     start_time = time.time()
     intersection = run_n_party_psi(parties)
     elapsed_time = time.time() - start_time
     if is_logging:
-        log(f"✅ Found intersected user IDs in {elapsed_time:.2f}s: {intersection}")
+        log(f"✅ Found intersected identifiers in {elapsed_time:.2f}s: {intersection}")
     else:
-        log(f"✅ Found intersected user IDs in {elapsed_time:.2f}s.")
+        log(f"✅ Found intersected identifiers in {elapsed_time:.2f}s.")
         
     if party_id == 0:
         milestones.append({"phase": "Data Intersection", "time": elapsed_time, "fill": "#005B8F"})
     
-    # Step 2: Join attributes for intersecting users only
-    log("🧩 Filtering data for intersected user IDs...")
+    # Step 2: Join attributes for intersecting identifiers only
+    log("🧩 Filtering data for intersected identifiers...")
     
     # [4] Privacy Filtering
     start_time = time.time()
 
-    # Step 2.1: Create a mapping from user_id to index for filtering
-    id_to_index = {uid: idx for idx, uid in enumerate(user_ids)}
-    intersecting_indices = [id_to_index[uid] for uid in intersection if uid in id_to_index]
+    # Step 2.1: Create a mapping from identifier to index for filtering
+    id_to_index = {identifier: idx for idx, identifier in enumerate(identifiers)}
+    intersecting_indices = [id_to_index[identifier] for identifier in intersection if identifier in id_to_index]
 
     # Step 2.2: Filter local features and labels (if any)
     X_filtered = [X_local[i] for i in intersecting_indices]

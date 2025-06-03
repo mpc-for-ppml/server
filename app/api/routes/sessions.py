@@ -7,9 +7,11 @@ from services.file_service import ensure_log_file_exists
 from services.result_service import ResultService
 from services.prediction_service import PredictionService
 from interface.session_state import SessionState, SessionStateInfo, StateCheckRequest, StateCheckResponse
+from interface.identifier_config import IdentifierConfig, IdentifierMode
 from datetime import datetime
 from typing import List, Dict
 import uuid
+import json
 import os
 import sys
 import subprocess
@@ -32,6 +34,7 @@ class RunConfig(BaseModel):
     epochs: int = 1000
     label: str
     isLogging: bool = False
+    identifierConfig: IdentifierConfig  # Now required
 
 class PredictRequest(BaseModel):
     data: List[Dict[str, float]]
@@ -43,6 +46,7 @@ class PredictResponse(BaseModel):
 def create_session(body: SessionCreate):
     sid = str(uuid.uuid4())
     now = datetime.now()
+    
     _sessions[sid] = SessionStateInfo(
         state=SessionState.CREATED,
         session_id=sid,
@@ -56,6 +60,104 @@ def create_session(body: SessionCreate):
         updated_at=now
     )
     return {"session_id": sid}
+
+@router.get("/{session_id}/common-columns")
+def get_common_columns(session_id: str):
+    """
+    Analyze all uploaded CSV files in the session and return common columns
+    that could be used as identifiers
+    """
+    sess = _sessions.get(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if all users have uploaded
+    if len(sess.uploaded_users) < sess.participant_count:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Not all users have uploaded. {len(sess.uploaded_users)}/{sess.participant_count} uploaded"
+        )
+    
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    if not os.path.exists(session_dir):
+        raise HTTPException(status_code=404, detail="Session upload folder not found")
+    
+    # Analyze all CSV files
+    all_columns = {}
+    user_columns = {}
+    
+    for user_id in sess.uploaded_users:
+        csv_path = os.path.join(session_dir, f"{user_id}.csv")
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            columns = set(df.columns.tolist())
+            user_columns[user_id] = columns
+            
+            # Track column info
+            for col in columns:
+                if col not in all_columns:
+                    all_columns[col] = {
+                        "name": col,
+                        "present_in_users": [],
+                        "unique_counts": {},
+                        "dtypes": {},
+                        "sample_values": []
+                    }
+                
+                all_columns[col]["present_in_users"].append(user_id)
+                all_columns[col]["unique_counts"][user_id] = df[col].nunique()
+                all_columns[col]["dtypes"][user_id] = str(df[col].dtype)
+                
+                # Add sample values from first user only
+                if len(all_columns[col]["sample_values"]) == 0:
+                    all_columns[col]["sample_values"] = df[col].dropna().head(3).tolist()
+    
+    # Find common columns (present in all users)
+    common_columns = []
+    for col_name, col_info in all_columns.items():
+        if len(col_info["present_in_users"]) == sess.participant_count:
+            # Check if it could be a good identifier
+            is_good_identifier = all(
+                col_info["unique_counts"][user] > 1 
+                for user in col_info["present_in_users"]
+            )
+            
+            common_columns.append({
+                "name": col_name,
+                "is_potential_identifier": is_good_identifier,
+                "unique_counts": col_info["unique_counts"],
+                "dtypes": col_info["dtypes"],
+                "sample_values": col_info["sample_values"]
+            })
+    
+    # Check if there are NO common columns
+    if not common_columns:
+        # Provide detailed information about what each party has
+        return {
+            "session_id": session_id,
+            "total_users": sess.participant_count,
+            "common_columns": [],
+            "potential_labels": [],
+            "all_columns_by_user": {user: list(cols) for user, cols in user_columns.items()},
+            "error": "No common columns found across all parties",
+            "recommendation": "All parties must have at least one column with the same name to proceed with MPC"
+        }
+    
+    # Identify label columns (columns that might be labels)
+    potential_labels = []
+    label_candidates = ["will_purchase", "purchase_amount", "label", "target", "y"]
+    
+    for col in common_columns:
+        if col["name"].lower() in label_candidates:
+            potential_labels.append(col["name"])
+    
+    return {
+        "session_id": session_id,
+        "total_users": sess.participant_count,
+        "common_columns": common_columns,
+        "potential_labels": potential_labels,
+        "all_columns_by_user": {user: list(cols) for user, cols in user_columns.items()}
+    }
 
 @router.get("/{session_id}")
 def get_session(session_id: str):
@@ -108,6 +210,7 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
     epochs = str(body.epochs)
     label = body.label
     is_logging = body.isLogging
+    identifier_config = body.identifierConfig
 
     # Only allow lead to trigger
     if user_id != sess.lead_user_id:
@@ -123,6 +226,41 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
             raise HTTPException(400, "Session has already completed")
         else:
             raise HTTPException(400, f"Cannot start processing in current state: {sess.state}")
+    
+    # Validate identifier columns exist in all uploaded files
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    if not os.path.exists(session_dir):
+        raise HTTPException(400, "Session upload folder not found")
+    
+    # First check if there are any common columns at all
+    all_columns_sets = []
+    for user_id in sess.uploaded_users:
+        csv_path = os.path.join(session_dir, f"{user_id}.csv")
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path, nrows=1)  # Just read header
+            all_columns_sets.append(set(df.columns))
+    
+    # Find intersection of all column sets
+    common_cols = set.intersection(*all_columns_sets) if all_columns_sets else set()
+    
+    if not common_cols:
+        raise HTTPException(
+            400,
+            "Cannot proceed: No common columns found across all parties. "
+            "All parties must have at least one column with the same name."
+        )
+    
+    # Check each uploaded file has the required identifier columns
+    for user_id in sess.uploaded_users:
+        csv_path = os.path.join(session_dir, f"{user_id}.csv")
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path, nrows=1)  # Just read header
+            missing_cols = [col for col in identifier_config.columns if col not in df.columns]
+            if missing_cols:
+                raise HTTPException(
+                    400, 
+                    f"User {user_id}'s file is missing identifier columns: {missing_cols}"
+                )
     
     # Update state to PROCESSING
     sess.state = SessionState.PROCESSING
@@ -182,6 +320,12 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
 
             if is_logging:
                 cmd.append("--verbose")
+            
+            # Add identifier config if it's not the default
+            if identifier_config and (identifier_config.mode != IdentifierMode.SINGLE or 
+                                    identifier_config.columns != ["user_id"]):
+                config_json = json.dumps(identifier_config.dict())
+                cmd.extend(["--identifier-config", config_json])
 
             p = subprocess.Popen(
                 cmd,

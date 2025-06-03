@@ -3,6 +3,7 @@
 import csv
 import pandas as pd
 from utils.data_preprocessor import DataPreprocessor
+from interface.identifier_config import IdentifierConfig, IdentifierMode
 
 def load_party_data(filename):
     """Loads a party's data from a CSV file into X and y."""
@@ -17,28 +18,36 @@ def load_party_data(filename):
     return X_local, y_local
 
 def load_party_data_adapted(filename, preferred_label=None,
+                           identifier_config=None,
                            verbose=False):
     """
     Dynamically loads CSV data for a party and returns:
-    - user_ids: list of user_id values
+    - identifiers: list of identifier values (based on identifier_config)
     - X_local: list of feature vectors
     - y_local: list of labels (if available, else None)
-    - feature_names: names of features (excluding user_id and label)
+    - feature_names: names of features (excluding identifier columns and label)
     - label_name: the name of the label column (if available, else None)
     
     Args:
         filename: Path to the CSV file
         preferred_label: Preferred label column name, with fallback to default candidates
-        apply_preprocessing: Whether to apply data preprocessing
-        preprocessing_config: Dict with preprocessing configuration
+        identifier_config: IdentifierConfig object specifying how to create identifiers
         verbose: Whether to print preprocessing details
     """
     # Load data into pandas DataFrame for preprocessing
     df = pd.read_csv(filename)
     
-    # Ensure user_id column exists
-    if "user_id" not in df.columns:
-        raise ValueError("CSV file must contain 'user_id' column")
+    # Default to user_id if no config provided
+    if identifier_config is None:
+        identifier_config = IdentifierConfig(
+            mode=IdentifierMode.SINGLE,
+            columns=["user_id"]
+        )
+    
+    # Validate identifier columns exist
+    missing_cols = [col for col in identifier_config.columns if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"CSV file must contain identifier columns: {missing_cols}")
     
     # Identify label column
     label_name = None
@@ -56,8 +65,12 @@ def load_party_data_adapted(filename, preferred_label=None,
     preprocessing_report = None
     
     # Data pre-processing
-    # Store user_ids before preprocessing
-    user_ids_series = df["user_id"].copy()
+    # Create identifiers before preprocessing
+    identifiers_list = []
+    for _, row in df.iterrows():
+        identifier = identifier_config.create_identifier(row.to_dict())
+        identifiers_list.append(identifier)
+    identifiers_series = pd.Series(identifiers_list, index=df.index)
     
     # Default preprocessing configuration
     default_config = {
@@ -76,12 +89,12 @@ def load_party_data_adapted(filename, preferred_label=None,
     # Create preprocessor
     preprocessor = DataPreprocessor(verbose=verbose)
     
-    # Temporarily remove user_id for preprocessing
-    df_without_userid = df.drop(columns=["user_id"])
+    # Temporarily remove identifier columns for preprocessing
+    df_without_identifiers = df.drop(columns=identifier_config.columns)
     
     # Apply preprocessing
     df_preprocessed = preprocessor.preprocess(
-        df_without_userid,
+        df_without_identifiers,
         label_column=label_name,
         **default_config
     )
@@ -89,21 +102,22 @@ def load_party_data_adapted(filename, preferred_label=None,
     # Get preprocessing report
     preprocessing_report = preprocessor.get_preprocessing_report()
     
-    # Re-align user_ids with preprocessed data
+    # Re-align identifiers with preprocessed data
     # Get the index of rows that remained after preprocessing
     remaining_indices = df_preprocessed.index
     df = df_preprocessed
-    user_ids_series = user_ids_series.loc[remaining_indices]
+    identifiers_series = identifiers_series.loc[remaining_indices]
     
     # Print report if verbose
     if verbose:
         preprocessor.print_report()
     
-    # Extract user_ids
-    user_ids = user_ids_series.tolist()
+    # Extract identifiers
+    identifiers = identifiers_series.tolist()
     
-    # Identify feature columns (excluding user_id and label)
-    feature_cols = [col for col in df.columns if col != "user_id" and col != label_name]
+    # Identify feature columns (excluding identifier columns and label)
+    excluded_cols = set(identifier_config.columns) | {label_name} if label_name else set(identifier_config.columns)
+    feature_cols = [col for col in df.columns if col not in excluded_cols]
     
     # Extract features and labels
     X_local = df[feature_cols].values.tolist()
@@ -119,5 +133,5 @@ def load_party_data_adapted(filename, preferred_label=None,
         print(f"  ✅ Final samples: {preprocessing_report['final_shape'][0]}", flush=True)
         print(f"  🗑️  Samples removed: {preprocessing_report['rows_removed']}", flush=True)
     
-    return user_ids, X_local, y_local, feature_names, label_name
+    return identifiers, X_local, y_local, feature_names, label_name
 

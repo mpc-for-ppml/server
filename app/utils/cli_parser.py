@@ -1,6 +1,7 @@
 # utils/cli_parser.py
 
 import sys
+import json
 
 def print_log(ids, msg):
     print(f"[Party {ids}] {msg}", flush=True)
@@ -9,7 +10,8 @@ def print_usage_and_exit():
     print(f"Usage: python mpyc_task.py [MPyC options] <dataset.csv>", end=" ")
     print("[--regression-type|--r] [linear|logistic]", end=" ")
     print("[--lr] <learning_rate> [--epochs] <num_epochs>", end=" ")
-    print("[--normalizer|--n] [minmax|zscore] [--label] <label_name> [--help|-h]")
+    print("[--normalizer|--n] [minmax|zscore] [--label] <label_name>", end=" ")
+    print("[--identifier-config] <json_config> [--help|-h]")
 
     print("\nArguments:")
     print("  [MPyC options]     : Optional, like -M (number of parties) or -I (party id)")
@@ -19,6 +21,9 @@ def print_usage_and_exit():
     print("  --lr               : Learning rate for training (float), optional")
     print("  --epochs           : Number of epochs for training (int), optional")
     print("  --label            : Target label column name, with fallback detection if not found")
+    print("  --identifier-config: JSON string for identifier configuration, e.g.")
+    print("                       '{\"mode\": \"single\", \"columns\": [\"user_id\"]}'")
+    print("                       '{\"mode\": \"combined\", \"columns\": [\"user_id\", \"date\"], \"separator\": \"_\"}'")
     print("  --help -h          : Show this help message and exit")
 
     print("\nExample:")
@@ -42,6 +47,7 @@ def parse_cli_args():
     learning_rate = None
     epochs = None
     label_name = None
+    identifier_config = None
     is_logging = '--verbose' in sys.argv or '--debug' in sys.argv
 
     # Extract CSV file
@@ -67,6 +73,7 @@ def parse_cli_args():
     lr_str = get_arg_value(['--lr'])
     epochs_str = get_arg_value(['--epochs'])
     label_name = get_arg_value(['--label'])
+    identifier_config_str = get_arg_value(['--identifier-config'])
 
     # Convert and validate lr and epochs
     if lr_str:
@@ -82,6 +89,14 @@ def parse_cli_args():
         except ValueError:
             print("❌ Invalid number of epochs. Must be an integer.\n")
             print_usage_and_exit()
+    
+    # Parse identifier config if provided
+    if identifier_config_str:
+        try:
+            identifier_config = json.loads(identifier_config_str)
+        except json.JSONDecodeError:
+            print("❌ Invalid identifier config. Must be valid JSON.\n")
+            print_usage_and_exit()
 
     return {
         "csv_file": csv_file,
@@ -90,5 +105,6 @@ def parse_cli_args():
         "learning_rate": learning_rate,
         "epochs": epochs,
         "label_name": label_name,
+        "identifier_config": identifier_config,
         "is_logging": is_logging
     }
