@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 from api.main import api_router
@@ -21,6 +22,7 @@ app = FastAPI(
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
+    app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.all_cors_origins,
