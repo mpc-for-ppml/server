@@ -28,6 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY *.py ./
 
+# Set PYTHONPATH to include the app directory
+ENV PYTHONPATH="/app/app:$PYTHONPATH"
+
 # Create necessary directories
 RUN mkdir -p /app/uploads /app/results /app/logs
 

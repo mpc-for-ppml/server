@@ -20,6 +20,9 @@ mkdir -p /app/uploads /app/results /app/logs
 # Set proper permissions
 chmod -R 755 /app/uploads /app/results /app/logs
 
+# Set PYTHONPATH to include the app directory
+export PYTHONPATH="/app/app:$PYTHONPATH"
+
 # Check if we need to wait for any services (e.g., database)
 # Uncomment and modify if you add a database
 # wait_for_service db 5432 "PostgreSQL"

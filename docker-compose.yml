@@ -20,6 +20,7 @@ services:
       - mpc-logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/app
       - LOG_LEVEL=INFO
       - SESSION_TIMEOUT=3600
     restart: unless-stopped
