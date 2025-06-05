@@ -337,7 +337,7 @@ async def proceed(session_id: str, background_tasks: BackgroundTasks, body: RunC
             logfile = open(party_log_path, "a", encoding="utf-8")
 
             cmd = [
-                sys.executable, "-u", "mpyc_task.py",
+                sys.executable, "-u", "app/mpyc_task.py",
                 "-M", str(num_parties),
                 "-I", str(pid),
                 csv_path,
