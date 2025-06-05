@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mpc-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mpc-ppml-server
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount code for development (with hot reload)
+      - ./app:/app/app
+      - ./mpyc_task.py:/app/mpyc_task.py
+      # Mount data directory
+      - ./app/data:/app/app/data
+      # Persistent volumes for uploads and results
+      - mpc-uploads:/app/uploads
+      - mpc-results:/app/results
+      - mpc-logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - SESSION_TIMEOUT=3600
+    restart: unless-stopped
+    networks:
+      - mpc-network
+
+  # Optional: Add a reverse proxy (nginx) for production
+  nginx:
+    image: nginx:alpine
+    container_name: mpc-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - mpc-server
+    networks:
+      - mpc-network
+    profiles:
+      - production
+
+volumes:
+  mpc-uploads:
+  mpc-results:
+  mpc-logs:
+
+networks:
+  mpc-network:
+    driver: bridge
