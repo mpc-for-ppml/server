@@ -3,6 +3,7 @@
 from mpyc.runtime import mpc
 from utils.cli_parser import print_log
 from utils.constant import DEFAULT_EPOCHS, DEFAULT_LR
+import gc
 
 def log(msg):
     print_log(mpc.pid, msg)
@@ -80,6 +81,10 @@ class SecureLogisticRegression:
             # Update theta and bias
             theta = [theta[j] - lr_sec * gradients[j] for j in range(n_features)]
             bias = bias - lr_sec * grad_bias
+
+            # Memory cleanup every 10 epochs
+            if epoch % 10 == 0:
+                gc.collect()
 
             # Debug: Print theta every 10 iterations
             if self.is_logging:
