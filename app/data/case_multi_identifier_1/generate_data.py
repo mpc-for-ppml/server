@@ -17,18 +17,18 @@ emails = [f"customer{i}@example.com" for i in range(1, n_total_customers + 1)]
 
 # Create overlapping sets for each party
 # Ensure significant overlap
-overlap_all = random.sample(range(n_total_customers), 100)  # 100 customers in all 3 parties
-overlap_ab = random.sample([i for i in range(n_total_customers) if i not in overlap_all], 50)
-overlap_bc = random.sample([i for i in range(n_total_customers) if i not in overlap_all + overlap_ab], 50)
-overlap_ac = random.sample([i for i in range(n_total_customers) if i not in overlap_all + overlap_ab + overlap_bc], 50)
+overlap_all = random.sample(range(n_total_customers), 50)  # 100 customers in all 3 parties
+overlap_ab = random.sample([i for i in range(n_total_customers) if i not in overlap_all], 25)
+overlap_bc = random.sample([i for i in range(n_total_customers) if i not in overlap_all + overlap_ab], 25)
+overlap_ac = random.sample([i for i in range(n_total_customers) if i not in overlap_all + overlap_ab + overlap_bc], 25)
 
 # Remaining unique customers
 remaining = [i for i in range(n_total_customers) if i not in overlap_all + overlap_ab + overlap_bc + overlap_ac]
-unique_a = random.sample(remaining, 50)
+unique_a = random.sample(remaining, 25)
 remaining = [i for i in remaining if i not in unique_a]
-unique_b = random.sample(remaining, 50)
+unique_b = random.sample(remaining, 25)
 remaining = [i for i in remaining if i not in unique_b]
-unique_c = random.sample(remaining, 50)
+unique_c = random.sample(remaining, 25)
 
 # Create party indices
 party_a_indices = overlap_all + overlap_ab + overlap_ac + unique_a
