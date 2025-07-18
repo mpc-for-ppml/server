@@ -225,3 +225,6 @@ models/
 results/
 logs/
 .vercel
+
+global_features.csv
+test.py

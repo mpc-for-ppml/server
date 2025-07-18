@@ -1,4 +1,4 @@
-# CASE_LOGREG_3 - Logistic Regression Data
+# CASE_LOGREG_4PARTY_3 - 4-Party Logistic Regression Data
 
 Generated with seed: 456
 Total samples: 500
@@ -8,7 +8,7 @@ Total samples: 500
 ### OrgA.csv (Demographics & Target)
 - `user_id`: Unique identifier
 - `age`: Customer age (18-80 years)
-- `income`: Annual income ($15k-$250k)
+- `income`: Annual income ($15k-$200k)
 - `will_purchase`: Target variable (0 or 1)
 
 ### OrgB.csv (Purchase Behavior)
@@ -19,31 +19,40 @@ Total samples: 500
 - `user_id`: Unique identifier
 - `web_visits`: Website visits in last month (0-150)
 
-## Logistic Relationship Formula
+### OrgD.csv (Financial & Location Data)
+- `user_id`: Unique identifier
+- `credit_score`: Credit score (300-850)
+- `location_category`: Location type (1=Rural, 5=Urban)
 
-```
-logit(p) = -2.5 + 
-           3.0 � income_normalized + 
-           2.0 � age_factor + 
-           2.5 � purchase_history_normalized + 
-           1.5 � web_visits_normalized + 
-           noise
+## Logistic Relationship
 
-probability = sigmoid(logit(p))
-will_purchase = 1 if random() < probability else 0
-```
+Features are generated to create realistic separation between classes:
+- Positive class: higher income, peak age (35-55), more purchases, more visits, higher credit, urban location
+- Negative class: lower income, varied age, fewer purchases, fewer visits, lower credit, rural location
+
+The logistic function uses 6 features with realistic coefficients:
+- Income: 1.3x weight
+- Credit Score: 1.1x weight
+- Purchase History: 1.0x weight
+- Age (peak factor): 0.8x weight
+- Web Visits: 0.7x weight
+- Location: 0.6x weight
 
 ## Class Distribution
 
-- Positive (will_purchase = 1): 45 (72.6%)
-- Negative (will_purchase = 0): 17 (27.4%)
-- Ratio: 2.65:1
+- Target ratio: ~55% positive, ~45% negative
+- Actual intersection:
+  - Positive: 27 (54.0%)
+  - Negative: 23 (46.0%)
+  - Ratio: 1.17:1
 
 ## Feature Statistics by Class
 
 | Feature | Positive Mean | Negative Mean | Difference |
 |---------|---------------|---------------|------------|
-| age | 40.6 | 42.9 | -2.3 |
-| income | 51609.6 | 46255.4 | 5354.2 |
-| purchase_history | 27.1 | 25.2 | 1.9 |
-| web_visits | 55.6 | 48.9 | 6.7 |
+| age | 45.3 | 42.7 | 2.6 |
+| income | 70212.9 | 50074.6 | 20138.3 |
+| purchase_history | 34.7 | 14.6 | 20.1 |
+| web_visits | 57.0 | 28.4 | 28.6 |
+| credit_score | 707.8 | 664.4 | 43.3 |
+| location_category | 3.9 | 2.3 | 1.5 |
